@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69.5"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "m3docvqa"
+version = "0.0.1"
+description = "M3DocVQA - Dataset package for M3DocRAG: Multi-modal Retrieval is What You Need for Multi-page Multi-document Understanding."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = ["Programming Language :: Python :: 3"]
+dependencies = [
+    "loguru",
+    "jsonlines",
+    "fire",
+    "pytest-playwright",
+    "figure",
+    "pdf2image",
+    "pillow",
+    "numpy<2.0.0",
+    "pdfrw",
+    "tqdm",
+    "reportlab", # only used in the test cases
+]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

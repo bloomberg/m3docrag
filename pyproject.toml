@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=69.5"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "m3docrag"
+version = "0.0.1"
+description = "Multimodal Document Understanding with RAG"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = ["Programming Language :: Python :: 3"]
+dependencies = [
+    "accelerate==1.1.0",
+    "loguru",
+    "requests",
+    "setuptools==69.5",
+    "transformers",
+    "tokenizers",
+    "flash-attn==2.5.8",
+    "bitsandbytes==0.43.1",
+    "safetensors",
+    "gpustat",
+    "icecream",
+    "pdf2image",
+    "numpy==1.26.4",
+    "torchvision",
+    "jsonlines",
+    "editdistance",
+    "einops",
+    "fire",
+    "peft",
+    "timm",
+    "sentencepiece",
+    "colpali-engine==0.3.1",
+    "easyocr",
+    "qwen-vl-utils",
+    "faiss-cpu",
+    "word2number",
+    "datasets>=3.0.0",
+    "python-dotenv",
+]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
