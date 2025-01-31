@@ -16,7 +16,7 @@ dependencies = [
     "accelerate==1.1.0",
     "loguru",
     "requests",
-    "setuptools==69.5",
+    "setuptools==70.0.0",
     "transformers",
     "tokenizers",
     "flash-attn==2.5.8",
