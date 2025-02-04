@@ -33,8 +33,8 @@ The scripts allows users to:
 ## Installation
 
 ```
-git clone <url-tbd>
-cd <repo-name-tbd>/m3docvqa
+git clone https://github.com/bloomberg/m3docrag
+cd m3docrag/m3docvqa
 ```
 
 ### Install Python Package
@@ -111,90 +111,134 @@ Output:
 
 A JSONL file `id_url_mapping.jsonl` containing the ID and corresponding URL mappings.
 
-### Step 3: Download Wikipedia Articles as PDFs
+### Step 3: Create Split Files
+Use the `create_splits` action to create the per-split doc ids.
+
+```bash
+python main.py create_splits --split_metadata_file=./multimodalqa/MMQA_dev.jsonl --split=dev
+python main.py create_splits --split_metadata_file=./multimodalqa/MMQA_train.jsonl --split=train
+```
+
+**Note** - In the [M3DocRAG](https://arxiv.org/abs/2411.04952) paper, we only use the `dev` split for our experiments.
+
+Output:
+
+- Files that store document IDs of each split: `./dev_doc_ids.json` and `./train_doc_ids.json`.
+
+
+### Step 4: Download Wikipedia Articles as PDFs
 Use the `download_pdfs` action to download Wikipedia articles in a PDF format based on the generated mapping.
 
 ```bash
-python main.py download_pdfs --metadata_path=./id_url_mapping.jsonl --pdf_dir=./pdfs --result_log_path=./download_results.jsonl --first_n=10 --supporting_doc_ids_per_split=./supporting_doc_ids_per_split.json --split=dev
+python main.py download_pdfs --metadata_path=./id_url_mapping.jsonl --pdf_dir=./pdfs_dev --result_log_dir=./download_logs/ --first_n=10 --per_split_doc_ids=./dev_doc_ids.json
 ```
 
 Options:
 - `--metadata_path`: Path to the id_url_mapping.jsonl file.
 - `--pdf_dir`: Directory to save the downloaded PDFs.
-- `--result_log_path`: Path to log the download results.
-- `--first_n`: Downloads the first N PDFs for testing. **Do not use this option for downloading all the PDFs.**
-- `--supporting_doc_ids_per_split`: Path to JSON file containing document IDs for each split. `dev` is the default split, as all of the experimental results in the `M3DocRAG` paper were reported on the `dev` split. Anyone interested in downloading the PDFs in the `train` split can provide `--supporting_doc_ids_per_split=train` as the option. In case anyone is interested in downloading all the PDFs, one can also provide `--supporting_doc_ids_per_split=all` as an option.
+- `--result_log_dir`: Directory to log the download results.
+- `--first_n`: Downloads the first N PDFs for testing (default is -1, which means all the PDFs).
+- `--per_split_doc_ids`: Path to JSON file containing document IDs for each split. `dev_doc_ids.json` is the default file, as all of the experimental results in the `M3DocRAG` paper were reported on the `dev` split. Anyone interested in downloading the PDFs in the `train` split can provide `--per_split_doc_ids=./train_doc_ids.json` as the option.
 
 Output:
 
-- PDF files for Wikipedia articles, saved in the `./pdfs/` directory.
+- PDF files for Wikipedia articles, saved in the `./pdfs_dev/` directory.
 - A `download_results.jsonl` file logging the status of each download.
 
-### Step 4: Check PDF Integrity
+If you want to download PDFs in parallel, you can try following commands with arguments `proc_id` and `n_proc`. `proc_id` is the process ID (default is 0), and `n_proc` is the total number of processes (default is 1).
+
+```bash
+# e.g., distributed in 4 parallel jobs on the first 20 PDFs
+N_total_processes=4
+
+for i in $(seq 0 $((N_total_processes - 1)));
+do
+    echo $i
+    python main.py \
+      download_pdfs \
+      --metadata_path './id_url_mapping.jsonl' \
+      --pdf_dir './pdfs_dev' \
+      --result_log_dir './download_logs/' \
+      --per_split_doc_ids './dev_doc_ids.json' \
+      --first_n=20 \
+      --proc_id=$i \
+      --n_proc=$N_total_processes &
+done
+
+
+# e.g., distributed in 16 parallel jobs on all dev PDFs
+N_total_processes=16
+
+for i in $(seq 0 $((N_total_processes - 1)));
+do
+    echo $i
+    python main.py \
+      download_pdfs \
+      --metadata_path './id_url_mapping.jsonl' \
+      --pdf_dir './pdfs_dev' \
+      --result_log_dir './download_logs/' \
+      --per_split_doc_ids './dev_doc_ids.json' \
+      --first_n=-1 \
+      --proc_id=$i \
+      --n_proc=$N_total_processes &
+done
+```
+
+
+
+### Step 5: Check PDF Integrity
 Use the `check_pdfs` action to verify the integrity of the downloaded PDFs.
 
 ```bash
-python main.py check_pdfs --pdf_dir=./pdfs
+python main.py check_pdfs --pdf_dir=./pdfs_dev
 ```
 Output:
 
 Identifies and logs corrupted or unreadable PDFs.
 
-### Step 5: Organize Files into Splits
-Use the `organize_files` action to organize the downloaded PDFs into specific splits (e.g., `train`, `dev`) based on a split information file.
+
+### (Optional) Step 6: Extract Images from PDFs
+When created embeddings in the [M3DocRAG](https://arxiv.org/abs/2411.04952) experiment, we extract images from the downloaded PDFs on the fly. But if the users want to extract images from the downloaded PDFs and save them for future use, they can use the `extract_images` action.
 
 ```bash
-python main.py organize_files --all_pdf_dir=./pdfs --target_dir_base=./splits --split=dev --split_metadata_file=./multimodalqa/MMQA_dev.jsonl
-```
-
-If train split is needed:
-
-```bash
-python main.py organize_files --all_pdf_dir=./pdfs --target_dir_base=./splits --split=train --split_metadata_file=./multimodalqa/MMQA_train.jsonl
+python main.py extract_images --pdf_dir=./pdfs_dev/ --image_dir=./images_dev
 ```
 
 Output:
 
-- Organized PDFs into directories in `./splits/pdfs_train/` and `./splits/pdfs_dev/`.
-- Files that store document IDs of each split `./train_doc_ids.json` and `./dev_doc_ids.json`.
-
-**Note** - In the [M3DocRAG](https://arxiv.org/abs/2411.04952) paper, we only use the `dev` split for our experiments.
-
-### Step 6: Extract Images from PDFs
-Use the `extract_images` action to extract images from the downloaded PDFs. A PNG image of each page of the PDFs is extracted. These images are used for both `retrieval` using `ColPali/ColQwen`, as well as `question answering` using the LLMs mentioned in the [M3DocRAG](https://arxiv.org/abs/2411.04952) paper.
-
-```bash
-python main.py extract_images --pdf_dir=./splits/pdfs_dev/ --image_dir=./images/images_dev
-```
-
-Output:
-
-Extracted images from the PDFs in the dev split are saved in the `./images/images_dev` directory.
+Extracted images from the PDFs in the dev split are saved in the `./images_dev` directory.
 
 After following these steps, your dataset directory structure will look like this:
 
-```
+```bash
 ./
+# original MMQA files
 |-- multimodalqa/
 |   |-- MMQA_train.jsonl
 |   |-- MMQA_dev.jsonl
 |   |-- MMQA_texts.jsonl
 |   |-- MMQA_images.jsonl
 |   |-- MMQA_tables.jsonl
+# generated files
 |-- id_url_mapping.jsonl
 |-- dev_doc_ids.json
 |-- train_doc_ids.json
 |-- supporting_doc_ids_per_split.json
-|-- download_results.jsonl
-|-- pdfs/
-|   |-- <article_1>.pdf
-|   |-- <article_2>.pdf
-|-- images/
-|-- |--images_dev/
-|   |  |-- <doc_id_1_page_1>.png
-|   |  |-- <doc_id_2_page_2>.png
-|-- splits/
-|   |-- pdfs_dev/
-|   |   |-- <doc_id_1>.pdf
-|   |   |-- <doc_id_2>.pdf
+# download logs
+|-- download_logs/
+|   |-- <process_id>_<first_n>.jsonl
+# downloaded PDFs
+|-- pdfs_dev/
+|   |-- <article_dev_1>.pdf
+|   |-- <article_dev_2>.pdf
+# (Below are optional outputs)
+# |-- pdfs_train/
+# |   |-- <article_train_1>.pdf
+# |   |-- <article_train_2>.pdf
+# |-- images_dev/
+# |   |-- <doc_id_dev_1_page_1>.png
+# |   |-- <doc_id_dev_2_page_2>.png
+# |-- images_train/
+# |   |-- <doc_id_train_1_page_1>.png
+# |   |-- <doc_id_train_2_page_2>.png
 ```

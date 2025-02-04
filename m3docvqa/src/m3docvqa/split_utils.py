@@ -30,19 +30,15 @@ import json
 import jsonlines
 from loguru import logger
 
-def create_split_dirs(
-    all_pdf_dir: str | Path,
-    target_dir_base: str | Path,
+
+def create_split_files(
     split_metadata_file: str | Path,
-    split: str
+    split: str,
 ) -> None:
-    """Copies specified PDF files into a target directory based on a given split.
+    """Create the per-split doc ids.
 
     Args:
-        all_pdf_dir (Union[str, Path]): Path to the directory containing all downloaded PDF files.
-        target_dir_base (Union[str, Path]): Base directory where the split-specific directory will be created.
         split_metadata_file (Union[str, Path]): Path to the metadata JSONL file for the split.
-        split (str): Split type ('train' or 'dev').
 
     Raises:
         FileNotFoundError: If the JSONL metadata file does not exist.
@@ -51,10 +47,6 @@ def create_split_dirs(
     # Validate split type
     if split not in {"train", "dev"}:
         raise ValueError(f"Invalid split: {split}. Expected 'train' or 'dev'.")
-
-    all_pdf_dir = Path(all_pdf_dir)
-    target_dir = Path(target_dir_base) / f'pdfs_{split}'
-    target_dir.mkdir(parents=True, exist_ok=True)
 
     # Validate metadata file
     split_metadata_file = Path(split_metadata_file)
@@ -76,18 +68,3 @@ def create_split_dirs(
     with open(split_doc_ids_output_path, 'w') as f:
         json.dump(split_doc_ids, f, indent=4)
     logger.info(f"Split {split} -> saved doc IDs at {split_doc_ids_output_path}")
-
-    # Copy PDF files to the target directory
-    missing_files = []
-    for doc_id in split_doc_ids:
-        pdf_file = all_pdf_dir / f"{doc_id}.pdf"
-        if pdf_file.exists():
-            shutil.copy(pdf_file, target_dir / pdf_file.name)
-        else:
-            missing_files.append(pdf_file)
-
-    if missing_files:
-        logger.warning(f"Warning: {len(missing_files)} files are missing and will be skipped.")
-        for missing_file in missing_files:
-            logger.warning(f"  Missing: {missing_file}")
-
