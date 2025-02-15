@@ -40,7 +40,7 @@ import jsonlines
 from pathlib import Path
 from m3docvqa.downloader import download_wiki_page
 from m3docvqa.pdf_utils import is_pdf_downloaded, is_pdf_clean, get_images_from_pdf
-from m3docvqa.split_utils import create_split_dirs
+from m3docvqa.split_utils import create_split_files
 from m3docvqa.mmqa_downloader import download_and_decompress_mmqa
 from m3docvqa.wiki_mapper import generate_wiki_links_mapping
 from loguru import logger
@@ -52,6 +52,7 @@ def _prepare_download(
     output_dir: Path | str, 
     first_n: int,
     doc_ids: set,
+    check_downloaded: bool = False,
     ) -> tuple[list[str], list[Path]]:
     """Prepare URLs and save paths for downloading.
 
@@ -74,14 +75,16 @@ def _prepare_download(
                 break
             
             doc_id = line.get("id")
+            url = line.get("url")
             if doc_ids and doc_id not in doc_ids:
                 continue
             
-            url = line.get("url")
             save_path = output_dir / f"{doc_id}.pdf"
-            if not is_pdf_downloaded(save_path):
-                urls.append(url)
-                save_paths.append(save_path)
+            if check_downloaded and is_pdf_downloaded(save_path):
+                continue
+
+            urls.append(url)
+            save_paths.append(save_path)
 
     return urls, save_paths
 
@@ -89,32 +92,31 @@ def _prepare_download(
 def download_pdfs(
     metadata_path: Path | str, 
     pdf_dir: Path | str, 
-    result_log_path: Path | str, 
-    supporting_doc_ids_per_split: Path | str,
+    result_log_dir: Path | str, 
+    per_split_doc_ids: Path | str,
     first_n: int = -1, 
     proc_id: int = 0, 
     n_proc: int = 1,
-    split: str = 'dev',
+    check_downloaded: bool = False,
     ):
     """Download Wikipedia pages as PDFs."""
     # Load document ids for the specified split
-    if supporting_doc_ids_per_split:
-        with open(supporting_doc_ids_per_split, "r") as f:
-            doc_ids_per_split = json.load(f)
-        split_doc_ids = {
-            "train": set(doc_ids_per_split.get("train", [])),
-            "dev": set(doc_ids_per_split.get("dev", [])),
-            "all": set(doc_ids_per_split.get("train", []) + doc_ids_per_split.get("dev", []))
-        }
-        if split not in split_doc_ids:
-            raise ValueError(f"Invalid or missing split. Expected one of {split_doc_ids.keys()}")
-        doc_ids = split_doc_ids.get(split, split_doc_ids.get("all"))
-        logger.info(f"Downloading documents for split: {split} with {len(doc_ids)} document IDs.")
+    if per_split_doc_ids:
+        with open(per_split_doc_ids, "r") as f:
+            doc_ids = json.load(f)
+        logger.info(f"Downloading documents with {len(doc_ids)} document IDs from {metadata_path}.")
 
-    urls, save_paths = _prepare_download(metadata_path, pdf_dir, first_n, doc_ids)
-    logger.info(f"Starting download of {len(urls)} PDFs to {pdf_dir}")
-    download_results = download_wiki_page(urls, save_paths, "pdf", result_log_path, proc_id, n_proc)
-    logger.info(f"Download completed with {sum(download_results)} successful downloads out of {len(urls)}")
+    urls, save_paths = _prepare_download(metadata_path, pdf_dir, first_n, doc_ids, check_downloaded)
+    
+    # split urls and save_paths (both are lists) into n_proc chunks
+    if n_proc > 1:
+        logger.info(f"[{proc_id}/{n_proc}] Splitting {len(urls)} URLs into {n_proc} chunks")
+        urls = urls[proc_id::n_proc]
+        save_paths = save_paths[proc_id::n_proc]
+
+    logger.info(f"[{proc_id}/{n_proc}] Starting download of {len(urls)} PDFs to {pdf_dir}")
+    download_results = download_wiki_page(urls, save_paths, "pdf", result_log_dir, proc_id, n_proc)
+    logger.info(f"[{proc_id}/{n_proc}] Download completed with {sum(download_results)} successful downloads out of {len(urls)}")
 
 
 def check_pdfs(pdf_dir: str, proc_id: int = 0, n_proc: int = 1):
@@ -147,18 +149,16 @@ def extract_images(pdf_dir: str, image_dir: str, save_type='png'):
 
     for pdf_path in tqdm(pdf_files, desc="Extracting images", unit="PDF"):
         get_images_from_pdf(pdf_path, save_dir=image_dir, save_type=save_type)
-    logger.info(f"Images extracted from PDFs in {pdf_dir}")
+    logger.info(f"Images extracted from {pdf_dir} and saved to {image_dir}")
 
 
-def organize_files(all_pdf_dir: Path | str, target_dir_base: Path | str, split_metadata_file: str | Path, split: str):
-    """Organizes PDFs into directory splits based on split information file."""
-    create_split_dirs(
-        all_pdf_dir=all_pdf_dir, 
-        target_dir_base=target_dir_base,
+def create_splits(split_metadata_file: str | Path, split: str):
+    """Create the per-split doc ids."""
+    create_split_files(
         split_metadata_file=split_metadata_file,
         split=split,
     )
-    logger.info(f"Files organized for {split} split: in {target_dir_base}")
+    logger.info(f"Doc Ids Files created for {split} split")
 
 
 def download_mmqa(output_dir: str):
@@ -193,7 +193,7 @@ def main():
         "download_pdfs": download_pdfs,
         "check_pdfs": check_pdfs,
         "extract_images": extract_images,
-        "organize_files": organize_files,
+        "create_splits": create_splits,
     })
 
 
